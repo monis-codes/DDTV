@@ -18,7 +18,7 @@ export const videos: Video[] = [
     thumbnail: require("../assets/images/thumb1.webp"),
     duration: "3:45",
     category: "Songs",
-    emoji: "🎵",
+    emoji: "🎵",  
     youtubeId: "Rc4967cMQIA",
   },
   {

@@ -1,19 +1,22 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useAuth } from '@/contexts/AuthContext';
 import { LinearGradient } from 'expo-linear-gradient';
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useEffect, useRef, useState } from 'react';
 import {
+  Alert,
   Animated,
   StyleSheet,
   Text,
   TouchableOpacity,
   useWindowDimensions,
-  View
+  View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 export default function Login() {
   const router = useRouter();
+  const { signInWithGoogle, signInAsGuest } = useAuth();
+  const { redirectVideoId } = useLocalSearchParams<{ redirectVideoId?: string }>();
   const [loading, setLoading] = useState(false);
   const { width } = useWindowDimensions();
   
@@ -53,14 +56,35 @@ export default function Login() {
   const handleGoogleLogin = async () => {
     setLoading(true);
     try {
-      await AsyncStorage.setItem("childName", `Guest_${Date.now()}`);
-      await AsyncStorage.setItem("loginMethod", "google");
-      
-      setTimeout(() => {
-        router.push("/onboarding" as any); // 'as any' handles potential routing type strictness
-      }, 500);
+      await signInWithGoogle();
+      // If there's a redirect video ID, go back to that video
+      if (redirectVideoId) {
+        router.push(`/video/${redirectVideoId}`);
+      } else {
+        // Navigation will be handled by NavigationGuard
+        router.push("/onboarding");
+      }
+    } catch (error: any) {
+      console.error("Google sign in error:", error);
+      Alert.alert('Sign In Failed', error.message || 'Failed to sign in with Google. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleGuestLogin = async () => {
+    setLoading(true);
+    try {
+      await signInAsGuest();
+      // If there's a redirect video ID, go back to that video
+      if (redirectVideoId) {
+        router.push(`/video/${redirectVideoId}`);
+      } else {
+        router.push("/onboarding");
+      }
     } catch (error) {
-      console.error("Login error:", error);
+      console.error("Guest login error:", error);
+      Alert.alert('Error', 'Failed to enter as guest. Please try again.');
       setLoading(false);
     }
   };
@@ -105,8 +129,23 @@ export default function Login() {
               </Text>
             </TouchableOpacity>
 
+            <TouchableOpacity
+              onPress={handleGuestLogin}
+              disabled={loading}
+              activeOpacity={0.8}
+              style={[
+                styles.button,
+                styles.guestButton,
+                loading && styles.buttonDisabled
+              ]}
+            >
+              <Text style={[styles.buttonText, styles.guestButtonText]}>
+                {loading ? "Loading..." : "Enter as Guest"}
+              </Text>
+            </TouchableOpacity>
+
             <Text style={styles.helperText}>
-              Tap to continue with your Google account
+              Choose how you want to continue
             </Text>
           </View>
 
@@ -219,6 +258,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: 12,
+    marginBottom: 12,
+  },
+  guestButton: {
+    backgroundColor: '#f3f4f6',
+    borderColor: '#d1d5db',
   },
   buttonDisabled: {
     opacity: 0.5,
@@ -231,6 +275,9 @@ const styles = StyleSheet.create({
     fontSize: 18, 
     fontWeight: '900', 
     color: '#000',
+  },
+  guestButtonText: {
+    color: '#666',
   },
   helperText: {
     textAlign: 'center',

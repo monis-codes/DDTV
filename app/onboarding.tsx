@@ -1,3 +1,4 @@
+import { useAuth } from '@/contexts/AuthContext';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
@@ -30,16 +31,17 @@ interface Language {
 ======================= */
 const languages: Language[] = [
   { code: 'en', name: 'English', flag: '🇬🇧' },
-  { code: 'es', name: 'Español', flag: '🇪🇸' },
-  { code: 'fr', name: 'Français', flag: '🇫🇷' },
-  { code: 'pt', name: 'Português', flag: '🇧🇷' },
-  { code: 'de', name: 'Deutsch', flag: '🇩🇪' },
-  { code: 'it', name: 'Italiano', flag: '🇮🇹' },
+  { code: 'hi', name: 'Hindi', flag: '🇮🇳' },
+  { code: 'es', name: 'Spanish', flag: '🇪🇸' },
+  { code: 'ar', name: 'Arabic', flag: '🇸🇦' },
+  { code: 'fr', name: 'French', flag: '🇫🇷' },
+  { code: 'de', name: 'German', flag: '🇩🇪' },
 ];
 
 export default function LanguagePage() {
   const router = useRouter();
   const { width } = useWindowDimensions();
+  const { user, updateUserProfile } = useAuth();
 
   const [nameInput, setNameInput] = useState('');
   const [selectedLanguage, setSelectedLanguage] = useState('en');
@@ -79,14 +81,17 @@ export default function LanguagePage() {
   }, []);
 
   /* =======================
-     Load Stored Name
+     Load Stored Name and Language
   ======================= */
   useEffect(() => {
-    const loadName = async () => {
+    const loadStoredData = async () => {
       const storedName = await AsyncStorage.getItem('childName');
+      const storedLanguage = await AsyncStorage.getItem('language');
+      
       if (storedName) setNameInput(storedName);
+      if (storedLanguage) setSelectedLanguage(storedLanguage);
     };
-    loadName();
+    loadStoredData();
   }, []);
 
   /* =======================
@@ -96,13 +101,24 @@ export default function LanguagePage() {
     if (!nameInput.trim()) return;
 
     setLoading(true);
-    await AsyncStorage.setItem('childName', nameInput.trim());
-    await AsyncStorage.setItem('language', selectedLanguage);
+    try {
+      // Save to AsyncStorage
+      await AsyncStorage.setItem('childName', nameInput.trim());
+      await AsyncStorage.setItem('language', selectedLanguage);
 
-    setTimeout(() => {
+      // Update user profile (this will save to Appwrite if logged in)
+      if (user) {
+        await updateUserProfile(nameInput.trim(), selectedLanguage);
+      }
+
       router.push('/homePage');
+    } catch (error) {
+      console.error('Error saving profile:', error);
+      // Still navigate even if there's an error
+      router.push('/homePage');
+    } finally {
       setLoading(false);
-    }, 500);
+    }
   };
 
   /* =======================

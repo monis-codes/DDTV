@@ -1,44 +1,82 @@
-import { Link } from "expo-router"
-import React, { useMemo, useState } from "react"
+import AsyncStorage from "@react-native-async-storage/async-storage"
+import { Link, useRouter } from "expo-router"
+import React, { useEffect, useMemo, useState } from "react"
 import {
-  FlatList,
-  Image,
-  StyleSheet,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
+    ActivityIndicator,
+    FlatList,
+    Image,
+    RefreshControl,
+    StyleSheet,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View,
 } from "react-native"
 import { SafeAreaView } from "react-native-safe-area-context"
 import { ParentalControlModal } from "../../components/parentModal"
-import { videos } from "../../data/videos"
+import { useAuth } from "../../contexts/AuthContext"
+import { useVideoFetcher } from "../../hooks/useVideoFetcher"
 
 /* ────────────────────────────────────────────── */
 /* ✅ HOME SCREEN                                  */
 /* ────────────────────────────────────────────── */
 
 export default function HomeScreen() {
+  const router = useRouter()
+  const { user } = useAuth()
   const [showParent, setShowParent] = useState(false)
   const [query, setQuery] = useState("")
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null)
+  const [preferredLanguage, setPreferredLanguage] = useState<string>("en")
+
+  /* ✅ Load preferred language */
+  useEffect(() => {
+    const loadLanguage = async () => {
+      const lang = await AsyncStorage.getItem("language")
+      if (lang) {
+        setPreferredLanguage(lang)
+      } else if (user?.preferredLanguage) {
+        setPreferredLanguage(user.preferredLanguage)
+      }
+    }
+    loadLanguage()
+  }, [user])
+
+  /* ✅ Fetch videos using the hook */
+  const { videos, isLoading, error, refreshVideos } = useVideoFetcher(preferredLanguage)
+  const [refreshing, setRefreshing] = useState(false)
 
   /* ✅ derive categories automatically */
   const categories = useMemo(() => {
-    return ["All", ...Array.from(new Set(videos.map(v => v.category)))]
-  }, [])
+    return ["All", ...Array.from(new Set(videos.map(v => v.title.split(" ")[0] || "Other")))]
+  }, [videos])
 
   /* ✅ search + category filter (LOCAL ONLY) */
   const filteredVideos = useMemo(() => {
     return videos.filter(video => {
       const matchesCategory =
-        !selectedCategory || video.category === selectedCategory
+        !selectedCategory || 
+        selectedCategory === "All" ||
+        video.title.toLowerCase().includes(selectedCategory.toLowerCase())
 
       const matchesSearch =
         video.title.toLowerCase().includes(query.toLowerCase())
 
       return matchesCategory && matchesSearch
     })
-  }, [query, selectedCategory])
+  }, [query, selectedCategory, videos])
+
+  /* ✅ Pull to refresh handler */
+  const onRefresh = async () => {
+    setRefreshing(true)
+    try {
+      await refreshVideos()
+    } catch (err) {
+      console.error('Refresh error:', err)
+    } finally {
+      setRefreshing(false)
+    }
+  }
 
   return (
     <SafeAreaView style={styles.container} edges={["top"]}>
@@ -46,7 +84,9 @@ export default function HomeScreen() {
       <View style={styles.header}>
         <View>
           <Text style={styles.logo}>🎬 DoomDoomTV</Text>
-          <Text style={styles.welcome}>Welcome, Adi!</Text>
+          <Text style={styles.welcome}>
+            Welcome, {user?.name || "Guest"}!
+          </Text>
         </View>
 
         <TouchableOpacity
@@ -109,43 +149,61 @@ export default function HomeScreen() {
       </View>
 
       {/* ───── VIDEO LIST ───── */}
-      <FlatList
-        data={filteredVideos}
-        keyExtractor={(item) => item.id}
-        contentContainerStyle={{ padding: 16 }}
-        ListEmptyComponent={
-          <Text style={styles.empty}>No videos found 😕</Text>
-        }
-        renderItem={({ item }) => (
-          <Link href={`/video/${item.id}`} asChild>
-            <TouchableOpacity activeOpacity={0.9}>
-              <View style={styles.card}>
-                <View>
-                  <Image source={item.thumbnail} style={styles.thumbnail} />
+      {isLoading ? (
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color="#FF6FAE" />
+          <Text style={styles.loadingText}>Loading videos...</Text>
+        </View>
+      ) : error ? (
+        <View style={styles.errorContainer}>
+          <Text style={styles.errorText}>Error loading videos 😕</Text>
+          <Text style={styles.errorSubtext}>{error.message}</Text>
+        </View>
+      ) : (
+        <FlatList
+          data={filteredVideos}
+          keyExtractor={(item) => item.videoId}
+          contentContainerStyle={{ padding: 16 }}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={onRefresh}
+              colors={["#FF6FAE"]}
+              tintColor="#FF6FAE"
+            />
+          }
+          ListEmptyComponent={
+            <Text style={styles.empty}>No videos found 😕</Text>
+          }
+          renderItem={({ item }) => (
+            <Link href={`/video/${item.videoId}`} asChild>
+              <TouchableOpacity activeOpacity={0.9}>
+                <View style={styles.card}>
+                  <View>
+                    <Image 
+                      source={{ uri: item.imageURL }} 
+                      style={styles.thumbnail} 
+                    />
 
-                  <View style={styles.playOverlay}>
-                    <Text style={styles.playIcon}>▶</Text>
+                    <View style={styles.playOverlay}>
+                      <Text style={styles.playIcon}>▶</Text>
+                    </View>
                   </View>
 
-                  <View style={styles.duration}>
-                    <Text style={styles.durationText}>{item.duration}</Text>
+                  <View style={styles.cardContent}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.title} numberOfLines={2}>
+                        {item.title}
+                      </Text>
+                      <Text style={styles.category}>{item.language}</Text>
+                    </View>
                   </View>
                 </View>
-
-                <View style={styles.cardContent}>
-                  <Text style={styles.emoji}>{item.emoji}</Text>
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.title} numberOfLines={2}>
-                      {item.title}
-                    </Text>
-                    <Text style={styles.category}>{item.category}</Text>
-                  </View>
-                </View>
-              </View>
-            </TouchableOpacity>
-          </Link>
-        )}
-      />
+              </TouchableOpacity>
+            </Link>
+          )}
+        />
+      )}
 
       {/* ───── MODALS ───── */}
       <ParentalControlModal
@@ -338,5 +396,36 @@ const styles = StyleSheet.create({
     color: "#999",
     marginTop: 32,
     fontSize: 16,
+  },
+
+  /* ───────── LOADING / ERROR ───────── */
+  loadingContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 32,
+  },
+  loadingText: {
+    marginTop: 16,
+    fontSize: 16,
+    fontWeight: "700",
+    color: "#666",
+  },
+  errorContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 32,
+  },
+  errorText: {
+    fontSize: 18,
+    fontWeight: "900",
+    color: "#ff4444",
+    marginBottom: 8,
+  },
+  errorSubtext: {
+    fontSize: 14,
+    color: "#999",
+    textAlign: "center",
   },
 })

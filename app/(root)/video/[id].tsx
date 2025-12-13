@@ -1,8 +1,9 @@
 import AsyncStorage from "@react-native-async-storage/async-storage"
-import { Link, useLocalSearchParams } from "expo-router"
+import { Link, useLocalSearchParams, useRouter } from "expo-router"
 import * as ScreenOrientation from "expo-screen-orientation"
-import { useCallback, useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useState } from "react"
 import {
+  Alert,
   Dimensions,
   Image,
   ScrollView,
@@ -14,52 +15,107 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context"
 import YoutubePlayer from "react-native-youtube-iframe"
 
-import { videos } from "../../../data/videos"
+import { useAuth } from "../../../contexts/AuthContext"
+import {
+  addToFavorites,
+  fetchVideosByLanguage,
+  isVideoFavorited,
+  removeFromFavorites,
+  Video
+} from "../../../lib/appwrite"
 
 const FAV_KEY = "FAVOURITE_VIDEOS"
 
 export default function VideoScreen() { 
   const { id } = useLocalSearchParams()
+  const router = useRouter()
+  const { user, isGuest } = useAuth()
   const [playing, setPlaying] = useState(false)
   const [isFavourite, setIsFavourite] = useState(false)
+  const [video, setVideo] = useState<Video | null>(null)
+  const [upNext, setUpNext] = useState<Video[]>([])
 
   const [isLandscape, setIsLandscape] = useState(
     Dimensions.get("window").width > Dimensions.get("window").height
   )
 
-  const video = useMemo(() => videos.find((v) => v.id === id), [id])
+  /* ============================
+     LOAD VIDEO DATA
+  ============================ */
+  useEffect(() => {
+    loadVideoData()
+  }, [id])
 
-  const upNext = useMemo(
-    () => videos.filter((v) => v.id !== id).slice(0, 4),
-    [id]
-  )
+  const loadVideoData = async () => {
+    try {
+      // For now, we'll need to fetch all videos and find the one with matching ID
+      // In a real app, you'd have a getVideoById function
+      const lang = await AsyncStorage.getItem("language") || "en"
+      const allVideos = await fetchVideosByLanguage(lang)
+      const foundVideo = allVideos.find((v) => v.videoId === id)
+      
+      if (foundVideo) {
+        setVideo(foundVideo)
+        // Set up next videos (excluding current)
+        setUpNext(allVideos.filter((v) => v.videoId !== id).slice(0, 4))
+        checkFavourite(foundVideo.videoId)
+      }
+    } catch (error) {
+      console.error("Error loading video:", error)
+    }
+  }
 
   /* ============================
      LOAD FAVOURITE STATE
   ============================ */
-  useEffect(() => {
-    if (video) checkFavourite()
-  }, [video])
-
-  const checkFavourite = async () => {
-    const raw = await AsyncStorage.getItem(FAV_KEY)
-    const favs: string[] = raw ? JSON.parse(raw) : []
-    setIsFavourite(favs.includes(video!.id))
+  const checkFavourite = async (videoId: string) => {
+    if (isGuest) {
+      // For guests, use local storage
+      const raw = await AsyncStorage.getItem(FAV_KEY)
+      const favs: string[] = raw ? JSON.parse(raw) : []
+      setIsFavourite(favs.includes(videoId))
+    } else if (user) {
+      // For logged-in users, check Appwrite
+      try {
+        const favorited = await isVideoFavorited(user.$id, videoId)
+        setIsFavourite(favorited)
+      } catch (error) {
+        console.error("Error checking favorite:", error)
+        // Fallback to local storage
+        const raw = await AsyncStorage.getItem(FAV_KEY)
+        const favs: string[] = raw ? JSON.parse(raw) : []
+        setIsFavourite(favs.includes(videoId))
+      }
+    }
   }
 
   const toggleFavourite = async () => {
-    const raw = await AsyncStorage.getItem(FAV_KEY)
-    let favs: string[] = raw ? JSON.parse(raw) : []
+    if (!video) return
 
-    if (favs.includes(video!.id)) {
-      favs = favs.filter((v) => v !== video!.id)
-      setIsFavourite(false)
-    } else {
-      favs.push(video!.id)
-      setIsFavourite(true)
+    // Gatekeeper: If guest, redirect to sign-in
+    if (isGuest) {
+      router.replace(`/sign-in?redirectVideoId=${video.videoId}`)
+      return
     }
 
-    await AsyncStorage.setItem(FAV_KEY, JSON.stringify(favs))
+    // If logged in, save to Appwrite
+    if (!user) {
+      Alert.alert("Error", "Please sign in to favorite videos")
+      return
+    }
+
+    try {
+      if (isFavourite) {
+        await removeFromFavorites(user.$id, video.videoId)
+        setIsFavourite(false)
+      } else {
+        await addToFavorites(user.$id, video.videoId)
+        setIsFavourite(true)
+      }
+    } catch (error) {
+      console.error("Error toggling favorite:", error)
+      Alert.alert("Error", "Failed to update favorite. Please try again.")
+    }
   }
 
   /* ============================
@@ -101,7 +157,15 @@ export default function VideoScreen() {
     }
   }, [])
 
-  if (!video) return null
+  if (!video) {
+    return (
+      <SafeAreaView style={styles.container} edges={["top"]}>
+        <View style={styles.loadingContainer}>
+          <Text style={styles.loadingText}>Loading video...</Text>
+        </View>
+      </SafeAreaView>
+    )
+  }
 
   return (
     <SafeAreaView style={styles.container} edges={["top"]}>
@@ -152,35 +216,36 @@ export default function VideoScreen() {
         {/* INFO */}
         <View style={styles.info}>
           <Text style={styles.title}>
-            {video.emoji} {video.title}
+            {video.title}
           </Text>
-          <Text style={styles.description}>{video.title}</Text>
+          <Text style={styles.description}>{video.language}</Text>
         </View>
 
         {/* UP NEXT */}
-        <View style={styles.upNext}>
-          <Text style={styles.upNextTitle}>✨ Up Next</Text>
+        {upNext.length > 0 && (
+          <View style={styles.upNext}>
+            <Text style={styles.upNextTitle}>✨ Up Next</Text>
 
-          {upNext.map((v) => (
-            <Link href={`/video/${v.id}`} asChild key={v.id}>
-              <TouchableOpacity style={styles.nextCard}>
-                <Image source={v.thumbnail} style={styles.nextThumb} />
+            {upNext.map((v) => (
+              <Link href={`/video/${v.videoId}`} asChild key={v.videoId}>
+                <TouchableOpacity style={styles.nextCard}>
+                  <Image source={{ uri: v.imageURL }} style={styles.nextThumb} />
 
-                <View style={styles.nextOverlay}>
-                  <Text style={styles.play}>▶</Text>
-                  <Text style={styles.duration}>{v.duration}</Text>
-                </View>
+                  <View style={styles.nextOverlay}>
+                    <Text style={styles.play}>▶</Text>
+                  </View>
 
-                <View style={styles.nextInfo}>
-                  <Text style={styles.nextTitle}>{v.title}</Text>
-                  <Text style={styles.nextCategory}>
-                    {v.category}
-                  </Text>
-                </View>
-              </TouchableOpacity>
-            </Link>
-          ))}
-        </View>
+                  <View style={styles.nextInfo}>
+                    <Text style={styles.nextTitle}>{v.title}</Text>
+                    <Text style={styles.nextCategory}>
+                      {v.language}
+                    </Text>
+                  </View>
+                </TouchableOpacity>
+              </Link>
+            ))}
+          </View>
+        )}
       </ScrollView>
     </SafeAreaView>
   )
@@ -289,5 +354,16 @@ const styles = StyleSheet.create({
     color: "#777",
     fontWeight: "700",
     marginTop: 2
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 32,
+  },
+  loadingText: {
+    fontSize: 16,
+    fontWeight: "700",
+    color: "#666",
   }
 });

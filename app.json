@@ -1,17 +1,22 @@
 {
   "expo": {
-    "name": "Stick",
-    "slug": "Stick",
+    "name": "Doom Doom TV",
+    "slug": "doomdoomtv",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "stick",
+    "scheme": "doomdoomtv",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "ios": {
-      "supportsTablet": true
+      "bundleIdentifier": "com.doomdoomtv.app",
+      "supportsTablet": true,
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "android": {
+      "package": "com.doomdoomtv.app",
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
@@ -43,6 +48,12 @@
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "7175266f-0e80-408e-98a6-5558fc35ce2c"
+      }
     }
   }
 }
