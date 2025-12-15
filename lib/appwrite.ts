@@ -51,6 +51,60 @@ function getLanguageName(languageCode: string): string {
   return LANGUAGE_CODE_TO_NAME[normalized] || normalized;
 }
 
+/**
+ * Clean YouTube video ID from various formats
+ * Extracts YouTube video ID from:
+ * - Direct ID: "rJ-67RIitQs" or "ipmvs_wg6eY"
+ * - Full URL: "https://www.youtube.com/watch?v=rJ-67RIitQs"
+ * - Short URL: "https://youtu.be/rJ-67RIitQs"
+ * - Embed URL: "https://www.youtube.com/embed/rJ-67RIitQs"
+ * - Partial URL: "youtube.com/watch?v=rJ-67RIitQs"
+ */
+function cleanYouTubeId(youtubeId: string | undefined | null): string {
+  if (!youtubeId) {
+    console.warn('⚠️ Empty YouTube ID provided');
+    return '';
+  }
+  
+  // Remove whitespace
+  let cleaned = String(youtubeId).trim();
+  
+  // If it's a full URL or partial URL, extract the ID
+  if (cleaned.includes('youtube.com/watch?v=') || cleaned.includes('watch?v=')) {
+    const match = cleaned.match(/[?&]v=([^&]+)/);
+    if (match && match[1]) {
+      return match[1].split('?')[0].split('#')[0].trim();
+    }
+  }
+  
+  if (cleaned.includes('youtu.be/')) {
+    const match = cleaned.match(/youtu\.be\/([^?&]+)/);
+    if (match && match[1]) {
+      return match[1].split('?')[0].split('#')[0].trim();
+    }
+  }
+  
+  if (cleaned.includes('youtube.com/embed/') || cleaned.includes('/embed/')) {
+    const match = cleaned.match(/embed\/([^?&]+)/);
+    if (match && match[1]) {
+      return match[1].split('?')[0].split('#')[0].trim();
+    }
+  }
+  
+  // If it's already just an ID (like "rJ-67RIitQs" or "ipmvs_wg6eY"), return as is
+  // Remove any query parameters, fragments, or trailing slashes
+  cleaned = cleaned.split('?')[0].split('#')[0].replace(/\/$/, '').trim();
+  
+  // Return cleaned ID - YouTube IDs can contain alphanumeric, hyphens, underscores, and dots
+  // Be permissive - just return what we have if it's not empty
+  if (cleaned.length > 0) {
+    return cleaned;
+  }
+  
+  console.warn('⚠️ Could not extract YouTube ID from:', youtubeId);
+  return '';
+}
+
 /* =======================
    Video Service Functions
 ======================= */
@@ -77,13 +131,37 @@ export async function fetchVideosByLanguage(language: string): Promise<Video[]> 
       [Query.equal('language', languageQuery)]
     );
 
-    return response.documents.map((doc: any) => ({
-      videoId: doc.$id,
-      title: doc.title,
-      imageURL: doc.imageURL,
-      language: doc.language,
-      youtubeId: doc.youtubeId, // The YouTube video ID for playback
-    }));
+    return response.documents.map((doc: any) => {
+      // The database attribute for YouTube video ID is 'videoId'
+      // Note: doc.$id is the Appwrite document ID, doc.videoId is the YouTube video ID attribute
+      const youtubeIdRaw = doc.videoId || ''; // Use videoId as the primary field name
+      
+      console.log('📹 Video from DB:', {
+        documentId: doc.$id,
+        title: doc.title,
+        youtubeVideoIdAttribute: doc.videoId, // This is the YouTube video ID from database attribute
+        allFields: Object.keys(doc)
+      });
+      
+      const cleanedId = cleanYouTubeId(youtubeIdRaw);
+      console.log('📹 Video cleaned:', {
+        title: doc.title,
+        original: youtubeIdRaw,
+        cleaned: cleanedId
+      });
+      
+      if (!cleanedId) {
+        console.warn('⚠️ Warning: Empty YouTube ID for video:', doc.title, 'Raw value:', youtubeIdRaw);
+      }
+      
+      return {
+        videoId: doc.$id, // Appwrite document ID (used for routing)
+        title: doc.title || '',
+        imageURL: doc.imageURL || doc.image_url || '',
+        language: doc.language || '',
+        youtubeId: cleanedId, // The YouTube video ID for playback (cleaned from doc.videoId)
+      };
+    });
   } catch (error) {
     console.error('Error fetching videos:', error);
     throw error;

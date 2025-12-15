@@ -48,20 +48,65 @@ export default function VideoScreen() {
 
   const loadVideoData = async () => {
     try {
-      // For now, we'll need to fetch all videos and find the one with matching ID
-      // In a real app, you'd have a getVideoById function
+      console.log("📹 Loading video with ID:", id)
+      // Fetch videos from database
       const lang = await AsyncStorage.getItem("language") || "en"
       const allVideos = await fetchVideosByLanguage(lang)
       const foundVideo = allVideos.find((v) => v.videoId === id)
       
       if (foundVideo) {
-        setVideo(foundVideo)
+        console.log("✅ Found video:", foundVideo.title)
+        console.log("🎬 Full video object:", JSON.stringify(foundVideo, null, 2))
+        console.log("🎬 YouTube ID from DB:", foundVideo.youtubeId)
+        
+        // The YouTube ID should already be cleaned by cleanYouTubeId in appwrite.ts
+        // But let's do a final check and extraction if needed
+        let youtubeId = foundVideo.youtubeId?.trim() || ""
+        
+        // If still empty, try to extract from full URL format
+        if (!youtubeId && foundVideo.youtubeId) {
+          // If it's a full URL, extract just the ID
+          if (foundVideo.youtubeId.includes('youtube.com/watch?v=')) {
+            const match = foundVideo.youtubeId.match(/[?&]v=([^&]+)/)
+            youtubeId = match ? match[1] : ""
+          } else if (foundVideo.youtubeId.includes('youtu.be/')) {
+            const match = foundVideo.youtubeId.match(/youtu\.be\/([^?&]+)/)
+            youtubeId = match ? match[1] : ""
+          } else if (foundVideo.youtubeId.includes('youtube.com/embed/')) {
+            const match = foundVideo.youtubeId.match(/embed\/([^?&]+)/)
+            youtubeId = match ? match[1] : ""
+          }
+        }
+        
+        // Remove any query parameters or fragments if present
+        youtubeId = youtubeId.split('?')[0].split('#')[0].trim()
+        
+        console.log("🎯 Final YouTube ID:", youtubeId)
+        
+        if (!youtubeId) {
+          console.error("❌ Empty YouTube ID after cleaning")
+          console.error("❌ Original foundVideo:", JSON.stringify(foundVideo, null, 2))
+          Alert.alert("Error", `Video ID not found in database. Please check the 'youtubeId' field for video: ${foundVideo.title}`)
+          return
+        }
+        
+        // Update video with cleaned YouTube ID
+        const videoWithCleanId = {
+          ...foundVideo,
+          youtubeId: youtubeId
+        }
+        
+        setVideo(videoWithCleanId)
         // Set up next videos (excluding current)
         setUpNext(allVideos.filter((v) => v.videoId !== id).slice(0, 4))
         checkFavourite(foundVideo.videoId)
+      } else {
+        console.error("❌ Video not found with ID:", id)
+        Alert.alert("Error", "Video not found. Please try another video.")
       }
     } catch (error) {
-      console.error("Error loading video:", error)
+      console.error("❌ Error loading video:", error)
+      Alert.alert("Error", "Failed to load video. Please try again.")
     }
   }
 
@@ -199,18 +244,33 @@ export default function VideoScreen() {
             { height: isLandscape ? 260 : 220 },
           ]}
         >
-          <YoutubePlayer
-            height={isLandscape ? 260 : 220}
-            play={playing}
-            videoId={video.youtubeId}
-            onChangeState={onStateChange}
-            webViewProps={{
-              originWhitelist: ["*"],
-              userAgent:
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120 Safari/537.36",
-            }}
-            baseUrl={"https://www.youtube.com"}
-          />
+          {video.youtubeId ? (
+            <YoutubePlayer
+              height={isLandscape ? 260 : 220}
+              play={playing}
+              videoId={video.youtubeId}
+              onChangeState={onStateChange}
+              onError={(error: string) => {
+                console.error("❌ YouTube player error:", error)
+                console.error("❌ Video ID used:", video.youtubeId)
+                Alert.alert("Playback Error", `Failed to play video. ID: ${video.youtubeId}`)
+              }}
+              webViewProps={{
+                originWhitelist: ["*"],
+                userAgent:
+                  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120 Safari/537.36",
+              }}
+              initialPlayerParams={{
+                modestbranding: 1,
+                rel: 0,
+                showinfo: 0,
+              }}
+            />
+          ) : (
+            <View style={[styles.videoWrapper, { justifyContent: 'center', alignItems: 'center' }]}>
+              <Text style={{ color: '#fff' }}>Loading video...</Text>
+            </View>
+          )}
         </View>
 
         {/* INFO */}

@@ -7,7 +7,7 @@
     "icon": "./assets/images/icon.png",
     "scheme": "doomdoomtv",
     "userInterfaceStyle": "automatic",
-    "newArchEnabled": true,
+    "newArchEnabled": false,
     "ios": {
       "bundleIdentifier": "com.doomdoomtv.app",
       "supportsTablet": true,
