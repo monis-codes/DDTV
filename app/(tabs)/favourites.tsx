@@ -1,35 +1,89 @@
 import AsyncStorage from "@react-native-async-storage/async-storage"
-import { Link } from "expo-router"
-import { useEffect, useState } from "react"
+import { Link, useFocusEffect } from "expo-router"
+import { useCallback, useEffect, useState } from "react"
 import {
-    FlatList,
-    Image,
-    StyleSheet,
-    Text,
-    TouchableOpacity,
-    View,
+  ActivityIndicator,
+  FlatList,
+  Image,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
 } from "react-native"
 import { SafeAreaView } from "react-native-safe-area-context"
-
-import { videos } from "../../data/videos"
+import { useAuth } from "../../contexts/AuthContext"
+import { fetchVideosByLanguage, getUserFavorites, Video } from "../../lib/appwrite"
 
 const FAV_KEY = "FAVOURITE_VIDEOS"
 
 export default function FavouritesScreen() {
+  const { user, isGuest } = useAuth()
   const [favourites, setFavourites] = useState<string[]>([])
+  const [favVideos, setFavVideos] = useState<Video[]>([])
+  const [childName, setChildName] = useState<string>("")
+  const [isLoading, setIsLoading] = useState(true)
 
   useEffect(() => {
-    loadFavourites()
-  }, [])
+    loadChildName()
+  }, [user])
 
-  const loadFavourites = async () => {
-    const raw = await AsyncStorage.getItem(FAV_KEY)
-    setFavourites(raw ? JSON.parse(raw) : [])
+  // Refresh favorites when screen comes into focus
+  useFocusEffect(
+    useCallback(() => {
+      loadFavourites()
+    }, [user, isGuest])
+  )
+
+  const loadChildName = async () => {
+    const name = await AsyncStorage.getItem("childName")
+    if (name) {
+      setChildName(name)
+    } else if (user?.name) {
+      setChildName(user.name)
+    } else {
+      setChildName("Guest")
+    }
   }
 
-  const favVideos = videos.filter((v) =>
-    favourites.includes(v.id)
-  )
+  const loadFavourites = async () => {
+    try {
+      setIsLoading(true)
+      let favoriteIds: string[] = []
+
+      if (isGuest) {
+        // For guests, get from AsyncStorage
+        const raw = await AsyncStorage.getItem(FAV_KEY)
+        favoriteIds = raw ? JSON.parse(raw) : []
+      } else if (user) {
+        // For logged-in users, get from Appwrite
+        try {
+          favoriteIds = await getUserFavorites(user.$id)
+        } catch (error) {
+          console.error("Error fetching favorites from Appwrite:", error)
+          // Fallback to local storage
+          const raw = await AsyncStorage.getItem(FAV_KEY)
+          favoriteIds = raw ? JSON.parse(raw) : []
+        }
+      }
+
+      setFavourites(favoriteIds)
+
+      // Fetch all videos to match with favorites
+      const lang = await AsyncStorage.getItem("language") || "en"
+      const allVideos = await fetchVideosByLanguage(lang)
+      
+      // Filter videos that are in favorites
+      const favoriteVideos = allVideos.filter((v) =>
+        favoriteIds.includes(v.videoId)
+      )
+
+      setFavVideos(favoriteVideos)
+    } catch (error) {
+      console.error("Error loading favorites:", error)
+    } finally {
+      setIsLoading(false)
+    }
+  }
 
   return (
     <SafeAreaView style={styles.container} edges={["top"]}>
@@ -37,27 +91,34 @@ export default function FavouritesScreen() {
       <View style={styles.header}>
         <Text style={styles.logo}>❤️ Favourites</Text>
         <Text style={styles.subtitle}>
-          Videos Adi loves watching
+          Videos {childName} loves watching
         </Text>
       </View>
 
-      {/* EMPTY STATE */}
-      {favVideos.length === 0 ? (
+      {/* LOADING STATE */}
+      {isLoading ? (
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color="#FF6FAE" />
+          <Text style={styles.loadingText}>Loading favorites...</Text>
+        </View>
+      ) : favVideos.length === 0 ? (
+        /* EMPTY STATE */
         <Text style={styles.empty}>
           No favourite videos yet 💖{"\n"}
           Tap ❤️ on a video to save it!
         </Text>
       ) : (
+        /* FAVORITES LIST */
         <FlatList
           data={favVideos}
-          keyExtractor={(item) => item.id}
+          keyExtractor={(item) => item.videoId}
           contentContainerStyle={{ padding: 16 }}
           renderItem={({ item }) => (
-            <Link href={`/video/${item.id}`} asChild>
+            <Link href={`/video/${item.videoId}`} asChild>
               <TouchableOpacity activeOpacity={0.9}>
                 <View style={styles.card}>
                   <Image
-                    source={item.thumbnail}
+                    source={{ uri: item.imageURL }}
                     style={styles.thumbnail}
                   />
 
@@ -65,16 +126,7 @@ export default function FavouritesScreen() {
                     <Text style={styles.playIcon}>▶</Text>
                   </View>
 
-                  <View style={styles.duration}>
-                    <Text style={styles.durationText}>
-                      {item.duration}
-                    </Text>
-                  </View>
-
                   <View style={styles.cardContent}>
-                    <Text style={styles.emoji}>
-                      {item.emoji}
-                    </Text>
                     <View style={{ flex: 1 }}>
                       <Text
                         style={styles.title}
@@ -83,7 +135,7 @@ export default function FavouritesScreen() {
                         {item.title}
                       </Text>
                       <Text style={styles.category}>
-                        {item.category}
+                        {item.language}
                       </Text>
                     </View>
                   </View>
@@ -130,6 +182,18 @@ const styles = StyleSheet.create({
     fontWeight: "800",
     color: "#999",
     paddingHorizontal: 24,
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 32,
+  },
+  loadingText: {
+    marginTop: 16,
+    fontSize: 16,
+    fontWeight: "700",
+    color: "#666",
   },
 
   card: {

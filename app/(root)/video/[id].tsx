@@ -34,10 +34,28 @@ export default function VideoScreen() {
   const [isFavourite, setIsFavourite] = useState(false)
   const [video, setVideo] = useState<Video | null>(null)
   const [upNext, setUpNext] = useState<Video[]>([])
+  const [childName, setChildName] = useState<string>("")
 
   const [isLandscape, setIsLandscape] = useState(
     Dimensions.get("window").width > Dimensions.get("window").height
   )
+
+  /* ============================
+     LOAD CHILD NAME
+  ============================ */
+  useEffect(() => {
+    const loadChildName = async () => {
+      const name = await AsyncStorage.getItem("childName")
+      if (name) {
+        setChildName(name)
+      } else if (user?.name) {
+        setChildName(user.name)
+      } else {
+        setChildName("Guest")
+      }
+    }
+    loadChildName()
+  }, [user])
 
   /* ============================
      LOAD VIDEO DATA
@@ -137,25 +155,32 @@ export default function VideoScreen() {
   const toggleFavourite = async () => {
     if (!video) return
 
-    // Gatekeeper: If guest, redirect to sign-in
-    if (isGuest) {
-      router.replace(`/sign-in?redirectVideoId=${video.videoId}`)
-      return
-    }
-
-    // If logged in, save to Appwrite
-    if (!user) {
-      Alert.alert("Error", "Please sign in to favorite videos")
-      return
-    }
-
     try {
-      if (isFavourite) {
-        await removeFromFavorites(user.$id, video.videoId)
-        setIsFavourite(false)
-      } else {
-        await addToFavorites(user.$id, video.videoId)
-        setIsFavourite(true)
+      if (isGuest) {
+        // For guests, use local storage
+        const raw = await AsyncStorage.getItem(FAV_KEY)
+        const favs: string[] = raw ? JSON.parse(raw) : []
+        
+        if (isFavourite) {
+          // Remove from favorites
+          const updatedFavs = favs.filter((id) => id !== video.videoId)
+          await AsyncStorage.setItem(FAV_KEY, JSON.stringify(updatedFavs))
+          setIsFavourite(false)
+        } else {
+          // Add to favorites
+          const updatedFavs = [...favs, video.videoId]
+          await AsyncStorage.setItem(FAV_KEY, JSON.stringify(updatedFavs))
+          setIsFavourite(true)
+        }
+      } else if (user) {
+        // For logged-in users, save to Appwrite
+        if (isFavourite) {
+          await removeFromFavorites(user.$id, video.videoId)
+          setIsFavourite(false)
+        } else {
+          await addToFavorites(user.$id, video.videoId)
+          setIsFavourite(true)
+        }
       }
     } catch (error) {
       console.error("Error toggling favorite:", error)
@@ -222,7 +247,7 @@ export default function VideoScreen() {
           </TouchableOpacity>
         </Link>
 
-        <Text style={styles.headerTitle}>Adi&apos;s Video</Text>
+        <Text style={styles.headerTitle}>{childName ? `${childName}'s Video` : "Video"}</Text>
 
               {/* FAV BUTTON */}
       <TouchableOpacity

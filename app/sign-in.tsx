@@ -20,7 +20,6 @@ export default function Login() {
   const [loading, setLoading] = useState(false);
   const { width } = useWindowDimensions();
   
-  // Logic to mimic 'sm:block' (Tailwind sm is usually 640px)
   const isSmallScreen = width < 640;
 
   // Animation values
@@ -28,7 +27,6 @@ export default function Login() {
   const bounceAnim2 = useRef(new Animated.Value(0)).current;
   const bounceAnim3 = useRef(new Animated.Value(0)).current;
 
-  // FIXED: Added types for 'anim' and 'delay'
   const startBounce = (anim: Animated.Value, delay: number) => {
     Animated.loop(
       Animated.sequence([
@@ -57,11 +55,9 @@ export default function Login() {
     setLoading(true);
     try {
       await signInWithGoogle();
-      // If there's a redirect video ID, go back to that video
       if (redirectVideoId) {
         router.push(`/video/${redirectVideoId}`);
       } else {
-        // Navigation will be handled by NavigationGuard
         router.push("/onboarding");
       }
     } catch (error: any) {
@@ -76,7 +72,6 @@ export default function Login() {
     setLoading(true);
     try {
       await signInAsGuest();
-      // If there's a redirect video ID, go back to that video
       if (redirectVideoId) {
         router.push(`/video/${redirectVideoId}`);
       } else {
@@ -112,40 +107,47 @@ export default function Login() {
           </View>
 
           <View style={styles.contentContainer}>
-            <Text style={styles.getStartedText}>Let's get started!</Text>
+            <Text style={styles.getStartedText}>Who is watching?</Text>
 
-            <TouchableOpacity
-              onPress={handleGoogleLogin}
-              disabled={loading}
-              activeOpacity={0.8}
-              style={[
-                styles.button,
-                loading && styles.buttonDisabled
-              ]}
-            >
-              <Text style={styles.googleIcon}>G</Text>
-              <Text style={styles.buttonText}>
-                {loading ? "Signing in..." : "Sign in with Google"}
-              </Text>
-            </TouchableOpacity>
+            {/* NEW: Side by Side Selection Row */}
+            <View style={styles.selectionRow}>
+                
+                {/* Parent Option -> Google Login */}
+                <TouchableOpacity
+                  onPress={handleGoogleLogin}
+                  disabled={loading}
+                  activeOpacity={0.8}
+                  style={[
+                    styles.selectionCard,
+                    styles.parentCard,
+                    loading && styles.cardDisabled
+                  ]}
+                >
+                  <Text style={styles.cardEmoji}>👨‍👩‍👧‍👦</Text>
+                  <Text style={styles.cardTitle}>I'm a Parent</Text>
+                  <Text style={styles.cardSubtitle}>Sign In</Text>
+                </TouchableOpacity>
 
-            <TouchableOpacity
-              onPress={handleGuestLogin}
-              disabled={loading}
-              activeOpacity={0.8}
-              style={[
-                styles.button,
-                styles.guestButton,
-                loading && styles.buttonDisabled
-              ]}
-            >
-              <Text style={[styles.buttonText, styles.guestButtonText]}>
-                {loading ? "Loading..." : "Enter as Guest"}
-              </Text>
-            </TouchableOpacity>
+                {/* Kid Option -> Guest Mode */}
+                <TouchableOpacity
+                  onPress={handleGuestLogin}
+                  disabled={loading}
+                  activeOpacity={0.8}
+                  style={[
+                    styles.selectionCard,
+                    styles.kidCard,
+                    loading && styles.cardDisabled
+                  ]}
+                >
+                  <Text style={styles.cardEmoji}>🎈</Text>
+                  <Text style={styles.cardTitle}>I'm a Kid</Text>
+                  <Text style={styles.cardSubtitle}>Enter Now</Text>
+                </TouchableOpacity>
+
+            </View>
 
             <Text style={styles.helperText}>
-              Choose how you want to continue
+              {loading ? "Loading..." : "Tap your profile to start"}
             </Text>
           </View>
 
@@ -217,7 +219,7 @@ const styles = StyleSheet.create({
   },
   headerContainer: {
     alignItems: 'center',
-    marginBottom: 32, 
+    marginBottom: 24, 
   },
   tvIcon: {
     fontSize: 48, 
@@ -244,53 +246,69 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: 'bold',
     color: '#000', 
-    marginBottom: 24,
+    marginBottom: 20,
   },
-  button: {
-    width: '100%',
-    backgroundColor: 'white',
-    borderWidth: 4,
-    borderColor: '#666', 
-    paddingVertical: 16,
-    paddingHorizontal: 16,
-    borderRadius: 24,
+  // NEW STYLES FOR SIDE-BY-SIDE BOXES
+  selectionRow: {
     flexDirection: 'row',
+    gap: 16,
+    justifyContent: 'space-between',
+  },
+  selectionCard: {
+    flex: 1,
+    aspectRatio: 0.85, // Makes them rectangular/tall boxes
+    borderRadius: 24,
+    borderWidth: 4,
+    padding: 12,
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 12,
-    marginBottom: 12,
+    elevation: 2,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
   },
-  guestButton: {
-    backgroundColor: '#f3f4f6',
-    borderColor: '#d1d5db',
+  parentCard: {
+    backgroundColor: 'white',
+    borderColor: '#666',
   },
-  buttonDisabled: {
+  kidCard: {
+    backgroundColor: '#f0f9ff', // Light blue tint
+    borderColor: '#3b82f6', // Blue border
+  },
+  cardDisabled: {
     opacity: 0.5,
   },
-  googleIcon: {
-    fontSize: 24,
-    fontWeight: 'bold',
+  cardEmoji: {
+    fontSize: 40,
+    marginBottom: 12,
   },
-  buttonText: {
-    fontSize: 18, 
-    fontWeight: '900', 
-    color: '#000',
+  cardTitle: {
+    fontSize: 16,
+    fontWeight: '900',
+    color: '#333',
+    textAlign: 'center',
+    marginBottom: 4,
   },
-  guestButtonText: {
+  cardSubtitle: {
+    fontSize: 12,
+    fontWeight: '600',
     color: '#666',
+    textAlign: 'center',
   },
+  // END NEW STYLES
   helperText: {
     textAlign: 'center',
     fontSize: 14,
     color: '#888', 
     fontWeight: '600',
-    marginTop: 16,
+    marginTop: 20,
   },
   bottomDecorations: {
     flexDirection: 'row',
     justifyContent: 'center',
     gap: 12,
-    marginTop: 24,
+    marginTop: 12,
   },
   emoji: {
     fontSize: 24,
